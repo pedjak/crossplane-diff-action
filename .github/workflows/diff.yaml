@@ -1,0 +1,81 @@
+on:
+  pull_request:
+    branches: [main]
+  
+name: Diff
+jobs:
+  pr:
+    name: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all 
+      - name: Check out current commit
+        uses: actions/checkout@v4
+      - name: Install Go
+        uses: actions/setup-go@v4
+      - name: Install Xrender
+        run: go install github.com/crossplane-contrib/xrender@latest
+      - name: Xrender
+        run: xrender examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-pr.yaml
+      - name: Install Python
+        uses: actions/setup-python@v4
+      - name: sort
+        run: |
+          python3 -c "import yaml; data = list(yaml.load_all(open('diff-pr.yaml'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('diff-pr.yaml', 'w'), default_flow_style=False)"
+      - name: store output
+        uses: actions/upload-artifact@v3
+        with:
+          name: diff-pr-${{ github.sha }}
+          path: diff-pr.yaml
+
+  main:
+    name: diff
+    needs: [pr]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v3
+        with:
+          name: diff-pr-${{ github.sha }}
+      - name: Install
+        uses: actions/setup-go@v4
+      - name: Install Xrender
+        run: go install github.com/crossplane-contrib/xrender@latest
+      - name: Xrender
+        run: xrender examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-main.yaml
+      - name: Install Python
+        uses: actions/setup-python@v4
+      - name: sort
+        run: |
+          python3 -c "import yaml; data = list(yaml.load_all(open('diff-main.yaml'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('diff-main.yaml', 'w'), default_flow_style=False)"
+      - name: Diff
+        id: diff_rev
+        run: |
+          DELTA=$(diff -y -W 120 diff-main.yaml diff-pr.yaml || true)
+          echo "DELTA<<EOF" >> $GITHUB_ENV
+          echo "$DELTA" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+      - name: Auto Comment
+        uses: wow-actions/auto-comment@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          pullRequestSynchronize: >
+            👋 @{{ author }}
+            
+            This is the code diff:
+            
+            ```
+            
+            ${{ env.DELTA }}
+            
+            ```
