@@ -2,17 +2,17 @@ apiVersion: aws.caas.upbound.io/v1alpha1
 kind: XCluster
 metadata:
   name: aws-spoke-01
-  annotation:
-    crossplane.render.composition: apis/cluster/composition.yaml
-    crossplane.render.function: examples/functions.yaml
+  annotations:
+    crossplane.io/render-composition-path: apis/cluster/composition.yaml
+    crossplane.io/render-function-path: examples/functions.yaml
 spec:
   parameters:
     id: aws-spoke-01
-    region: us-west-1
+    region: eu-central-1
     version: "1.27"
     nodes:
       count: 5
-      instanceType: t3.large
+      instanceType: m4.2xlarge
     gitops:
       url: https://github.com/upbound/caas-cluster-configuration
   writeConnectionSecretToRef:

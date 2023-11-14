@@ -32,8 +32,8 @@ jobs:
           YAML_FILES=($(find $EXAMPLES_PATH -type f -name '*.yaml'))
           INPUT_FILES=""
           for file in "${YAML_FILES[@]}"; do
-            COMPOSITION=$(yq eval '.metadata.annotations."crossplane.render.composition"' $file)
-            FUNCTION=$(yq eval '.metadata.annotations."crossplane.render.function"' $file)
+            COMPOSITION=$(yq eval '.metadata.annotations."crossplane.io/render-composition-path"' $file)
+            FUNCTION=$(yq eval '.metadata.annotations."crossplane.io/render-function-path"' $file)
             INPUT_FILES+="$file,$COMPOSITION,$FUNCTION "
           done
           echo "INPUT_FILES=${INPUT_FILES}" >> $GITHUB_ENV
