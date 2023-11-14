@@ -98,15 +98,23 @@ jobs:
           done
 
       # Auto comment with diffs
+      - name: Generate Comment
+        id: generate_comment
+        run: |
+          echo "👋 @${{ github.event.pull_request.user.login }}"
+          echo "This is the code diff:"
+          
+          # Loop through input files and include diffs for each file
+          IFS=',' read -ra FILES <<< "${{ steps.diff_rev.outputs.INPUT_FILES }}"
+          for file in "${FILES[@]}"; do
+            ENV_VAR_NAME="DELTA_$(echo $file | tr '/' '_')"
+            eval "echo \"\$\{{ env.${ENV_VAR_NAME} }}\""
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Auto Comment
         uses: wow-actions/auto-comment@v1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          pullRequestSynchronize: |
-            👋 @{{ author }}
-            
-            This is the code diff:
-            
-            ```diff
-            ${{ env.DELTA_*.yaml }}
-            ```
+          pullRequestSynchronize: ${{ steps.generate_comment.outputs }}
