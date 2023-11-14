@@ -5,12 +5,10 @@ metadata:
 spec:
   parameters:
     id: aws-spoke-01
-    region: us-east-1
+    region: eu-central-1
     version: "1.28"
-    iam:
-      roleArn: arn:aws:iam::609897127049:role/AWSReservedSSO_AdministratorAccess_d703c73ed340fde7
     nodes:
-      count: 3
+      count: 5
       instanceType: t3.large
     gitops:
       url: https://github.com/upbound/caas-cluster-configuration
