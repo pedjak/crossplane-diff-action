@@ -1,8 +1,9 @@
 on:
   pull_request:
     branches: [main]
-  
-name: Diff
+
+name: Crossplane Dynamic Diff
+
 jobs:
   pr:
     name: prepare
@@ -18,18 +19,29 @@ jobs:
         uses: actions/setup-go@v4
       - name: Install Crossplane CLI
         run: go install github.com/crossplane/crossplane/cmd/crank@latest
-      - name: Xrender
-        run: crank beta render examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-pr.yaml
-      - name: Install Python
-        uses: actions/setup-python@v4
-      - name: sort
+
+      # Split input files into an array
+      - name: Split input files
         run: |
-          python3 -c "import yaml; data = list(yaml.load_all(open('diff-pr.yaml'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('diff-pr.yaml', 'w'), default_flow_style=False)"
-      - name: store output
+          IFS=',' read -ra INPUT_FILES <<< "${{ env.INPUT_FILES }}"
+          echo "INPUT_FILES=${INPUT_FILES[*]}" >> $GITHUB_ENV
+
+      # Run a dynamic job for each input file
+      - name: Run Dynamic Jobs
+        run: |
+          for files in "${INPUT_FILES[@]}"; do
+            IFS=',' read -ra FILE_ARRAY <<< "$files"
+            for file in "${FILE_ARRAY[@]}"; do
+              crank beta render $file >> diff-${file//\//-}.yaml
+            done
+          done
+
+      # Store outputs as artifacts
+      - name: Store outputs
         uses: actions/upload-artifact@v3
         with:
           name: diff-pr-${{ github.sha }}
-          path: diff-pr.yaml
+          path: diff-*.yaml
 
   main:
     name: diff
@@ -40,42 +52,61 @@ jobs:
         uses: docker/setup-qemu-action@v2
         with:
           platforms: all
+
+      # Check out the main branch
       - name: Check out main
         uses: actions/checkout@v4
         with:
           ref: main
-      - uses: actions/download-artifact@v3
+
+      # Download artifacts from the dynamic job
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
         with:
           name: diff-pr-${{ github.sha }}
-      - name: Install
-        uses: actions/setup-go@v4
-      - name: Install Xrender
-        run: go install github.com/crossplane/crossplane/cmd/crank@latest
-      - name: Xrender
-        run: crank beta render examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-main.yaml
-      - name: Install Python
-        uses: actions/setup-python@v4
-      - name: sort
+
+      # Run a dynamic job for each input file on the main branch
+      - name: Run Dynamic Jobs on main
         run: |
-          python3 -c "import yaml; data = list(yaml.load_all(open('diff-main.yaml'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('diff-main.yaml', 'w'), default_flow_style=False)"
+          INPUT_FILES=${{ env.INPUT_FILES }}
+          for files in "${INPUT_FILES[@]}"; do
+            IFS=',' read -ra FILE_ARRAY <<< "$files"
+            for file in "${FILE_ARRAY[@]}"; do
+              crank beta render $file >> diff-main-${file//\//-}.yaml
+            done
+          done
+
+      # Store outputs as artifacts
+      - name: Store main outputs
+        uses: actions/upload-artifact@v3
+        with:
+          name: diff-main-${{ github.sha }}
+          path: diff-main-*.yaml
+
+      # Diff the outputs between PR and main
       - name: Diff
         id: diff_rev
         run: |
-          DELTA=$(diff -u diff-main.yaml diff-pr.yaml || true)
-          echo "DELTA<<EOF" >> $GITHUB_ENV
-          echo "$DELTA" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          for files in "${INPUT_FILES[@]}"; do
+            IFS=',' read -ra FILE_ARRAY <<< "$files"
+            for file in "${FILE_ARRAY[@]}"; do
+              DELTA=$(diff -u diff-main-${file//\//-}.yaml diff-pr-${file//\//-}.yaml || true)
+              echo "DELTA_${file//\//-}<<EOF" >> $GITHUB_ENV
+              echo "$DELTA" >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+            done
+          done
+
+      # Auto comment with diffs
       - name: Auto Comment
         uses: wow-actions/auto-comment@v1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          pullRequestSynchronize: >
+          pullRequestSynchronize: |
             👋 @{{ author }}
             
             This is the code diff:
             
             ```diff
-            
-            ${{ env.DELTA }}
-            
+            ${{ env.DELTA_*.yaml }}
             ```
