@@ -2,11 +2,14 @@ apiVersion: aws.caas.upbound.io/v1alpha1
 kind: XCluster
 metadata:
   name: aws-spoke-01
+  annotation:
+    crossplane.render.composition: apis/cluster/composition.yaml
+    crossplane.render.function: examples/functions.yaml
 spec:
   parameters:
     id: aws-spoke-01
-    region: eu-central-1
-    version: "1.28"
+    region: us-west-1
+    version: "1.27"
     nodes:
       count: 5
       instanceType: t3.large

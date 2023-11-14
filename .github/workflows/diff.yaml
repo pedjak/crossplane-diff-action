@@ -17,23 +17,37 @@ jobs:
         uses: actions/checkout@v4
       - name: Install Go
         uses: actions/setup-go@v4
+      - name: Install yq
+        run: |
+          sudo add-apt-repository ppa:rmescandon/yq
+          sudo apt-get update
+          sudo apt-get install yq
       - name: Install Crossplane CLI
         run: go install github.com/crossplane/crossplane/cmd/crank@latest
 
-      # Split input files into an array
-      - name: Split input files
+      # Discover YAML files and their annotations
+      - name: Discover YAML files
         run: |
-          IFS=',' read -ra INPUT_FILES <<< "${{ env.INPUT_FILES }}"
-          echo "INPUT_FILES=${INPUT_FILES[*]}" >> $GITHUB_ENV
+          EXAMPLES_PATH="examples"
+          YAML_FILES=($(find $EXAMPLES_PATH -type f -name '*.yaml'))
+          INPUT_FILES=""
+          for file in "${YAML_FILES[@]}"; do
+            COMPOSITION=$(yq eval '.metadata.annotations."crossplane.render.composition"' $file)
+            FUNCTION=$(yq eval '.metadata.annotations."crossplane.render.function"' $file)
+            INPUT_FILES+="$file,$COMPOSITION,$FUNCTION "
+          done
+          echo "INPUT_FILES=${INPUT_FILES}" >> $GITHUB_ENV
 
       # Run a dynamic job for each input file
       - name: Run Dynamic Jobs
         run: |
+          IFS=' ' read -ra INPUT_FILES <<< "${{ env.INPUT_FILES }}"
           for files in "${INPUT_FILES[@]}"; do
             IFS=',' read -ra FILE_ARRAY <<< "$files"
-            for file in "${FILE_ARRAY[@]}"; do
-              crank beta render $file >> diff-${file//\//-}.yaml
-            done
+            FILE="${FILE_ARRAY[0]}"
+            COMPOSITION="${FILE_ARRAY[1]}"
+            FUNCTION="${FILE_ARRAY[2]}"
+            crank beta render $FILE $COMPOSITION $FUNCTION >> diff-${FILE//\//-}.yaml
           done
 
       # Store outputs as artifacts
@@ -53,35 +67,34 @@ jobs:
         with:
           platforms: all
 
-      # Check out the main branch
-      - name: Check out main
-        uses: actions/checkout@v4
-        with:
-          ref: main
+      # Check out the current branch (main or PR branch)
+      - name: Check out branch
+        uses: actions/checkout@v2
 
       # Download artifacts from the dynamic job
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v2
         with:
           name: diff-pr-${{ github.sha }}
 
-      # Run a dynamic job for each input file on the main branch
-      - name: Run Dynamic Jobs on main
+      # Run a dynamic job for each input file
+      - name: Run Dynamic Jobs
         run: |
           INPUT_FILES=${{ env.INPUT_FILES }}
           for files in "${INPUT_FILES[@]}"; do
             IFS=',' read -ra FILE_ARRAY <<< "$files"
-            for file in "${FILE_ARRAY[@]}"; do
-              crank beta render $file >> diff-main-${file//\//-}.yaml
-            done
+            FILE="${FILE_ARRAY[0]}"
+            COMPOSITION="${FILE_ARRAY[1]}"
+            FUNCTION="${FILE_ARRAY[2]}"
+            crank beta render $FILE $COMPOSITION $FUNCTION >> diff-${FILE//\//-}.yaml
           done
 
       # Store outputs as artifacts
-      - name: Store main outputs
-        uses: actions/upload-artifact@v3
+      - name: Store outputs
+        uses: actions/upload-artifact@v2
         with:
           name: diff-main-${{ github.sha }}
-          path: diff-main-*.yaml
+          path: diff-*.yaml
 
       # Diff the outputs between PR and main
       - name: Diff

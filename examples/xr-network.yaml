@@ -2,7 +2,10 @@ apiVersion: aws.platform.upbound.io/v1alpha1
 kind: XNetwork
 metadata:
   name: ref-aws-network
+  annotation:
+    crossplane.render.composition: apis/network/composition.yaml
+    crossplane.render.function: examples/functions.yaml
 spec:
   parameters:
-    id: platform-ref-aws
-    region: us-west-2
+    id: platform-ref-aws-test
+    region: eu-central-1
