@@ -19,7 +19,7 @@ jobs:
       - name: Install Crossplane CLI
         run: go install github.com/crossplane/crossplane/cmd/crank@latest
       - name: Xrender
-        run: crossplane beta render examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-pr.yaml
+        run: crank beta render examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-pr.yaml
       - name: Install Python
         uses: actions/setup-python@v4
       - name: sort
@@ -52,7 +52,7 @@ jobs:
       - name: Install Xrender
         run: go install github.com/crossplane/crossplane/cmd/crank@latest
       - name: Xrender
-        run: crossplane beta render examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-main.yaml
+        run: crank beta render examples/xr.yaml examples/composition.yaml examples/functions.yaml >> diff-main.yaml
       - name: Install Python
         uses: actions/setup-python@v4
       - name: sort
