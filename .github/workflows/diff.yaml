@@ -61,7 +61,7 @@ jobs:
       - name: Diff
         id: diff_rev
         run: |
-          DELTA=$(diff -y -W 120 diff-main.yaml diff-pr.yaml || true)
+          DELTA=$(diff -u diff-main.yaml diff-pr.yaml || true)
           echo "DELTA<<EOF" >> $GITHUB_ENV
           echo "$DELTA" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -74,7 +74,7 @@ jobs:
             
             This is the code diff:
             
-            ```
+            ```diff
             
             ${{ env.DELTA }}
             
