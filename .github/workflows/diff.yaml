@@ -34,6 +34,12 @@ jobs:
           for file in "${YAML_FILES[@]}"; do
             COMPOSITION=$(yq eval '.metadata.annotations."crossplane.io/render-composition-path"' $file)
             FUNCTION=$(yq eval '.metadata.annotations."crossplane.io/render-function-path"' $file)
+
+            # Skip files where both annotations are null
+            if [[ "$COMPOSITION" == "null" && "$FUNCTION" == "null" ]]; then
+              continue
+            fi
+
             INPUT_FILES+="$file,$COMPOSITION,$FUNCTION "
           done
           echo "INPUT_FILES=${INPUT_FILES}" >> $GITHUB_ENV
@@ -47,7 +53,23 @@ jobs:
             FILE="${FILE_ARRAY[0]}"
             COMPOSITION="${FILE_ARRAY[1]}"
             FUNCTION="${FILE_ARRAY[2]}"
-            crank beta render $FILE $COMPOSITION $FUNCTION >> diff-${FILE//\//-}.yaml
+
+            # Skip files where both annotations are null
+            if [[ "$COMPOSITION" == "null" && "$FUNCTION" == "null" ]]; then
+              continue
+            fi
+
+            crank beta render $FILE $COMPOSITION $FUNCTION >> diff-pr-${FILE//\//-}.yaml
+          done
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+
+      # Sort YAML files
+      - name: Sort YAML files
+        run: |
+          for file in diff-pr-*.yaml; do
+            python3 -c "import yaml; data = list(yaml.load_all(open('$file'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('$file', 'w'), default_flow_style=False)"
           done
 
       # Store outputs as artifacts
@@ -66,27 +88,72 @@ jobs:
         uses: docker/setup-qemu-action@v2
         with:
           platforms: all
+      - name: Install Go
+        uses: actions/setup-go@v4
+      - name: Install yq
+        run: |
+          sudo add-apt-repository ppa:rmescandon/yq
+          sudo apt-get update
+          sudo apt-get install yq
+      - name: Install Crossplane CLI
+        run: go install github.com/crossplane/crossplane/cmd/crank@latest
 
-      # Check out the current branch (main or PR branch)
-      - name: Check out branch
-        uses: actions/checkout@v2
-
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+  
       # Download artifacts from the dynamic job
       - name: Download artifacts
         uses: actions/download-artifact@v2
         with:
           name: diff-pr-${{ github.sha }}
 
+      # Discover YAML files and their annotations
+      - name: Discover YAML files
+        run: |
+          EXAMPLES_PATH="examples"
+          YAML_FILES=($(find $EXAMPLES_PATH -type f -name '*.yaml'))
+          INPUT_FILES=""
+          for file in "${YAML_FILES[@]}"; do
+            COMPOSITION=$(yq eval '.metadata.annotations."crossplane.io/render-composition-path"' $file)
+            FUNCTION=$(yq eval '.metadata.annotations."crossplane.io/render-function-path"' $file)
+
+            # Skip files where both annotations are null
+            if [[ "$COMPOSITION" == "null" && "$FUNCTION" == "null" ]]; then
+              continue
+            fi
+
+            INPUT_FILES+="$file,$COMPOSITION,$FUNCTION "
+          done
+          echo "INPUT_FILES=${INPUT_FILES}" >> $GITHUB_ENV
+
       # Run a dynamic job for each input file
       - name: Run Dynamic Jobs
         run: |
-          INPUT_FILES=${{ env.INPUT_FILES }}
+          IFS=' ' read -ra INPUT_FILES <<< "${{ env.INPUT_FILES }}"
           for files in "${INPUT_FILES[@]}"; do
             IFS=',' read -ra FILE_ARRAY <<< "$files"
             FILE="${FILE_ARRAY[0]}"
             COMPOSITION="${FILE_ARRAY[1]}"
             FUNCTION="${FILE_ARRAY[2]}"
-            crank beta render $FILE $COMPOSITION $FUNCTION >> diff-${FILE//\//-}.yaml
+
+            # Skip files where both annotations are null
+            if [[ "$COMPOSITION" == "null" && "$FUNCTION" == "null" ]]; then
+              continue
+            fi
+
+            crank beta render $FILE $COMPOSITION $FUNCTION >> diff-main-${FILE//\//-}.yaml
+          done
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+
+      # Sort YAML files
+      - name: Sort YAML files
+        run: |
+          for file in diff-main-*.yaml; do
+            python3 -c "import yaml; data = list(yaml.load_all(open('$file'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('$file', 'w'), default_flow_style=False)"
           done
 
       # Store outputs as artifacts
@@ -94,40 +161,65 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: diff-main-${{ github.sha }}
-          path: diff-*.yaml
+          path: diff-main-*.yaml
 
       # Diff the outputs between PR and main
       - name: Diff
         id: diff_rev
         run: |
-          for files in "${INPUT_FILES[@]}"; do
-            IFS=',' read -ra FILE_ARRAY <<< "$files"
-            for file in "${FILE_ARRAY[@]}"; do
-              DELTA=$(diff -u diff-main-${file//\//-}.yaml diff-pr-${file//\//-}.yaml || true)
-              echo "DELTA_${file//\//-}<<EOF" >> $GITHUB_ENV
-              echo "$DELTA" >> $GITHUB_ENV
-              echo "EOF" >> $GITHUB_ENV
+          IFS=',' read -ra INPUT_FILES <<< "$INPUT_FILES"
+          for FILE in "${INPUT_FILES[@]}"; do
+            IFS=' ' read -ra FILE_PATHS <<< "$FILE"
+            for SUB_FILE in "${FILE_PATHS[@]}"; do
+              MAIN_FILE="diff-main-${SUB_FILE//\//-}.yaml"
+              PR_FILE="diff-pr-${SUB_FILE//\//-}.yaml"
+              echo "Checking differences for file: $SUB_FILE"
+              echo "Main file path: $MAIN_FILE"
+              echo "PR file path: $PR_FILE"
+              if [ -f "$MAIN_FILE" ] && [ -f "$PR_FILE" ]; then
+                DELTA_NAME=$(echo "DELTA_${SUB_FILE//[\./]/_}" | tr '[:upper:]' '[:lower:]' | sed 's/\//_/g')
+                DELTA_FILE="$DELTA_NAME.diff"
+                echo "Setting DELTA_NAME: $DELTA_NAME"
+                DELTA=$(diff -u "$MAIN_FILE" "$PR_FILE" || true)
+                echo "$DELTA" > "$DELTA_FILE"
+                echo "Differences found for $SUB_FILE. Diff saved in $DELTA_FILE"
+              else
+                echo "Either $MAIN_FILE or $PR_FILE does not exist!"
+              fi
             done
           done
 
-      # Auto comment with diffs
       - name: Generate Comment
         id: generate_comment
         run: |
-          echo "👋 @${{ github.event.pull_request.user.login }}"
-          echo "This is the code diff:"
-          
-          # Loop through input files and include diffs for each file
-          IFS=',' read -ra FILES <<< "${{ steps.diff_rev.outputs.INPUT_FILES }}"
-          for file in "${FILES[@]}"; do
-            ENV_VAR_NAME="DELTA_$(echo $file | tr '/' '_')"
-            eval "echo \"\$\{{ env.${ENV_VAR_NAME} }}\""
+          ALL_DELTAS=""
+
+          # Iterate over all diff files
+          for DELTA_FILE in $(find . -name '*.diff'); do
+            echo "Processing diff file: $DELTA_FILE"
+
+            # Debugging statement
+            cat "$DELTA_FILE"
+
+            # Ensure the file exists and is not empty
+            if [ -s "$DELTA_FILE" ]; then
+              # Use printf to format newlines properly
+              ALL_DELTAS="${ALL_DELTAS}$(printf '\n```diff\n%s\n```' "$(cat "$DELTA_FILE")")"
+              echo "ALL_DELTAS so far: $ALL_DELTAS"
+            else
+              echo "Diff file $DELTA_FILE is either empty or not found!"
+            fi
           done
+
+          # Debugging statement
+          echo "Final ALL_DELTAS: $ALL_DELTAS"
+
+          # Write the content to a file
+          echo -e "$ALL_DELTAS" > diff_content.txt
+
+      - name: comment PR
+        uses: machine-learning-apps/pr-comment@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Auto Comment
-        uses: wow-actions/auto-comment@v1
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          pullRequestSynchronize: ${{ steps.generate_comment.outputs }}
+          path: diff_content.txt

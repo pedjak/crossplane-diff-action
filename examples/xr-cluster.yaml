@@ -7,8 +7,8 @@ metadata:
     crossplane.io/render-function-path: examples/functions.yaml
 spec:
   parameters:
-    id: aws-spoke-01
-    region: eu-central-1
+    id: aws-spoke-02
+    region: us-west-2
     version: "1.27"
     nodes:
       count: 5
