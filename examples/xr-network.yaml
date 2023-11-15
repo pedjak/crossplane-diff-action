@@ -7,5 +7,5 @@ metadata:
     crossplane.io/render-function-path: examples/functions.yaml
 spec:
   parameters:
-    id: platform-ref-aws-test
+    id: platform-ref-aws
     region: eu-central-1

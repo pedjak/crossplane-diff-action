@@ -69,7 +69,7 @@ jobs:
       - name: Sort YAML files
         run: |
           for file in diff-pr-*.yaml; do
-            python3 -c "import yaml; data = list(yaml.load_all(open('$file'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('$file', 'w'), default_flow_style=False)"
+            python3 -c "import yaml; data = list(yaml.load_all(open('$file'), Loader=yaml.FullLoader)); data.sort(key=lambda x: (x.get('kind', ''), str(x.get('metadata', {}).get('annotations', '')))); yaml.dump_all(data, open('$file', 'w'), default_flow_style=False)"
           done
 
       # Store outputs as artifacts
@@ -153,9 +153,8 @@ jobs:
       - name: Sort YAML files
         run: |
           for file in diff-main-*.yaml; do
-            python3 -c "import yaml; data = list(yaml.load_all(open('$file'), Loader=yaml.FullLoader)); data.sort(key=lambda x: x.get('kind', '')); yaml.dump_all(data, open('$file', 'w'), default_flow_style=False)"
+            python3 -c "import yaml; data = list(yaml.load_all(open('$file'), Loader=yaml.FullLoader)); data.sort(key=lambda x: (x.get('kind', ''), str(x.get('metadata', {}).get('annotations', '')))); yaml.dump_all(data, open('$file', 'w'), default_flow_style=False)"
           done
-
       # Store outputs as artifacts
       - name: Store outputs
         uses: actions/upload-artifact@v2
