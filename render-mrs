@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+indir=$1
+outdir=$2
+prefix=$3
+
+mkdir -p $outdir
+for file in $(find $indir -type f -name '*.yaml' ); do
+    COMPOSITION=$(yq eval '.metadata.annotations."crossplane.io/render-composition-path"' $file)
+    FUNCTION=$(yq eval '.metadata.annotations."crossplane.io/render-function-path"' $file)
+
+    # Skip files where both annotations are null
+    if [[ "$COMPOSITION" == "null" && "$FUNCTION" == "null" ]]; then
+    continue
+    fi
+
+    out=${prefix}${file//\//-}
+    crossplane beta render $file $COMPOSITION $FUNCTION | ${SCRIPT_DIR}/sort-yaml-content > $outdir/$out
+done

@@ -1,0 +1,108 @@
+name: Crossplane Dynamic Diff GitHub Action
+description: |
+  This GitHub Action performs a dynamic diff between pull requests (PRs) and the main branch for Crossplane YAML files with specific annotations. 
+  It leverages the Crossplane CLI to render compositions and functions specified in the annotations. 
+  Differences are then compared between the PR and main branches, and a detailed diff is generated and commented on the PR.
+inputs:
+  dir:
+    description: Directory containing Crossplane YAML files
+    required: true
+  github-token:
+    description: Github Token
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Check out current commit
+      uses: actions/checkout@v4
+      with:
+        path: pr
+
+    - name: Check out target branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.base_ref }}
+        path: target
+
+    - name: Install yq
+      uses: frenck/action-setup-yq@v1
+      with:
+        version: v4.40.3
+
+    - name: Install Python
+      uses: actions/setup-python@v4
+    
+    - name: Install Crossplane CLI
+      shell: bash
+      run: |
+        curl -sL "https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh" | sh
+        sudo mv crossplane /usr/local/bin
+
+    - name: Render MRs
+      shell: bash
+      working-directory: ./pr
+      run: ${{ github.action_path }}/render-mrs ${{ inputs.dir }} /tmp/pr
+
+    - name: Render MRs from the target branch
+      shell: bash
+      working-directory: ./target
+      run: ${{ github.action_path }}/render-mrs ${{ inputs.dir }} /tmp/target
+
+    - name: Generate diffs
+      shell: bash
+      run: |
+        mkdir -p /tmp/diff
+        for f in /tmp/pr/*.yaml; do
+          tf=/tmp/target/$(basename $f)
+          if [ ! -f "$tf" ]; then
+            echo $tf does not exists!
+          fi
+          DELTA=$(diff -u "$tf" "$f" || true)
+          [ ! -z "$DELTA" ] && echo "$DELTA" > /tmp/diff/$(basename $f .yaml).diff || true
+        done
+
+    - name: Generate Comment
+      id: generate_comment
+      shell: bash
+      run: |
+        ALL_DELTAS=""
+
+        # Iterate over all diff files
+        for DELTA_FILE in $(find /tmp/diff -type f -name '*.diff'); do
+          echo "Processing diff file: $DELTA_FILE"
+
+          # Debugging statement
+          cat "$DELTA_FILE"
+
+          # Ensure the file exists and is not empty
+          if [ -s "$DELTA_FILE" ]; then
+            # Use printf to format newlines properly
+            ALL_DELTAS="${ALL_DELTAS}$(printf '\n```diff\n%s\n```' "$(cat "$DELTA_FILE")")"
+            echo "ALL_DELTAS so far: $ALL_DELTAS"
+          else
+            echo "Diff file $DELTA_FILE is either empty or not found!"
+          fi
+        done
+
+        # Debugging statement
+        echo "Final ALL_DELTAS: $ALL_DELTAS"
+
+        # Write the content to a file
+        [ ! -z "$ALL_DELTAS" ] && echo -e "$ALL_DELTAS" > diff_content.txt || true
+
+
+    - name: Comment on PR
+      if: ${{ hashFiles('diff_content.txt') != '' }}
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          var fs = require('fs');
+          var issue_number = ${{ github.event.number }};
+          var comment = fs.readFileSync('./diff_content.txt', {encoding:'utf8', flag:'r'});
+          github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: Number(issue_number),
+            body: comment
+          });
