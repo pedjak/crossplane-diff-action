@@ -13,8 +13,4 @@ jobs:
         uses: pedjak/crossplane-diff-action@action
         with:
           dir: examples
-<<<<<<< HEAD
           github-token: ${{ secrets.GITHUB_TOKEN }}
-=======
-          token: ${{ secrets.GITHUB_TOKEN }}
->>>>>>> 4432273 (wip)
