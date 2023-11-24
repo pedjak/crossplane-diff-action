@@ -3,12 +3,13 @@ kind: XCluster
 metadata:
   name: aws-spoke-01
   annotations:
+    foo: "3"
     crossplane.io/render-composition-path: apis/cluster/composition.yaml
     crossplane.io/render-function-path: examples/functions.yaml
 spec:
   parameters:
     id: aws-spoke-02
-    region: us-west-2
+    region: us-west-1
     version: "1.26"
     nodes:
       count: 5
