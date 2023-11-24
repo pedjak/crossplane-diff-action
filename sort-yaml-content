@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+
+import yaml 
+import sys
+
+data = list(yaml.load_all(sys.stdin, Loader=yaml.FullLoader))
+data.sort(key=lambda x: (x.get('kind', ''), str(x.get('metadata', {}).get('annotations', ''))))
+yaml.dump_all(data, sys.stdout, default_flow_style=False)

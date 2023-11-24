@@ -1,46 +1,29 @@
 # Crossplane Dynamic Diff GitHub Action
 
-This GitHub Action performs a dynamic diff between pull requests (PRs) and the main branch for Crossplane YAML files with specific annotations. It leverages the Crossplane CLI to render compositions and functions specified in the annotations. Differences are then compared between the PR and main branches, and a detailed diff is generated and commented on the PR.
+This GitHub Action performs a dynamic diff between pull requests (PRs) and the target branch for Crossplane YAML files with specific annotations. It leverages the Crossplane CLI to render compositions and functions specified in the annotations. Differences are then compared between the PR and target branches, and a detailed diff is generated and commented on the PR.
 
 ## Usage
 
-To use this GitHub Action, add the following YAML configuration to your repository's `.github/workflows` directory:
+To use this GitHub Action, add the following step to your GitHub job:
 
 ```yaml
-name: Crossplane Dynamic Diff
-
+name: Example Workflow
 on:
   pull_request:
-    branches: [main]
 
 jobs:
-  pr:
-    # ... (Same as in the provided workflow)
-
-  main:
-    # ... (Same as in the provided workflow)
+  example:
+  runs-on: ubuntu-latest
+  steps:
+    - name: Crossplane Dynamic Diff
+      uses: upbound/crossplane-diff-action@main
+      with:
+        # process XRs from the given directory
+        dir: examples 
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+  
 ```
 
-Make sure to customize the configuration as needed for your repository.
-
-## Workflow Overview
-
-The workflow consists of two main jobs:
-
-1. **pr (Pull Request) Job:**
-   - Installs dependencies, including QEMU, Go, yq, and the Crossplane CLI.
-   - Discovers YAML files in the `examples` directory and extracts composition and function paths from annotations (`crossplane.io/render-composition-path` and `crossplane.io/render-function-path`).
-   - Executes a dynamic job for each input file, rendering compositions and functions and storing the output as `diff-pr-*.yaml`.
-   - Sorts the YAML files and stores the sorted versions as artifacts.
-
-2. **main Job:**
-   - Installs dependencies, including QEMU, Go, yq, and the Crossplane CLI.
-   - Checks out the main branch and downloads artifacts from the PR job.
-   - Discovers YAML files in the `examples` directory and extracts composition and function paths from annotations (`crossplane.io/render-composition-path` and `crossplane.io/render-function-path`).
-   - Executes a dynamic job for each input file, rendering compositions and functions and storing the output as `diff-main-*.yaml`.
-   - Sorts the YAML files and stores the sorted versions as artifacts.
-   - Compares the outputs between the PR and main branches, generating a diff for each file.
-   - Generates a comment summarizing all differences and attaches the comment to the PR.
 
 ### Annotations
 
@@ -79,4 +62,4 @@ This information helps reviewers understand the changes introduced by the PR.
 
 ## Credits
 
-This GitHub Action uses the [machine-learning-apps/pr-comment](https://github.com/machine-learning-apps/pr-comment) action for commenting on the PR. Special thanks to the Crossplane community for the development and maintenance of the Crossplane CLI.
+Special thanks to the Crossplane community for the development and maintenance of the Crossplane CLI.
